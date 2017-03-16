@@ -250,6 +250,26 @@ class display
 			}
 		}
 		
+		/*
+			method setZLayer
+			description:	Defines the Z position of a Picture
+							Sometimes it is important to draw certain pictures on top of others this function does that
+			
+			syntax:			newPicture.setZLayer( zLayer )
+			
+			zLayer:			The Z position of the picture
+							Pictures with a higher z Position are drawn on top of others
+			
+			remarks:		Performance wise it might be usefull to split zLayers that contain pictures that change a lot from zLayers that contain pictures that don't change at all
+		*/
+		
+		setZLayer( zLayer )
+		{
+			This.zLayer := zLayer
+			if This.getVisible()
+				This.getParent().notifyChange( This )
+		}
+		
 		getPosition()
 		{
 			return This.pos
@@ -263,13 +283,6 @@ class display
 		getVisible()
 		{
 			return This.visible
-		}
-		
-		setZLayer( zLayer )
-		{
-			This.zLayer := zLayer
-			if This.getVisible()
-				This.getParent().notifyChange( This )
 		}
 		
 		getZLayer()
