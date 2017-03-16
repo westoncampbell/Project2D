@@ -1,9 +1,37 @@
 ﻿#include logError.ahk
 
+/*
+API display OutPut
+author:      nnnik
+
+description: The display Output API is used to output images on a GUI while having certain control over them.
+
+general:     First you create an instance of the display class.
+Then you use it's methods to create picture objects.
+With these picture objects you can then control what exactly is displayed how.
+*/
+
 class display
 {
 	
-	__New( hWND := 0, size = "", usedAPI := "gdipAPI" )
+	/*
+		class display 
+		syntax:  newDisplay := new display( hWND [, size, usedAPI ] )
+		
+		displayOutput:	The new instance of a display class
+		
+		hWND:			The handle of the Window or control you want to output data to
+		
+		size:			The size of the field of the display
+						Has to be in the form [ sizeX, sizeY ]
+						( optional defaults to [ 1, 1 ] )
+		
+		usedAPI: 		The backend API used to output to the Window
+						So far it can only be "gdipAPI" or gdipAPI which will use gdip to display the output
+		
+	*/
+	
+	__New( hWND , size = "", usedAPI := "gdipAPI" )
 	{
 		if ( This.setFieldSize( isObject( size ) ? size : [ 1, 1 ] ) )
 		{
@@ -24,6 +52,35 @@ class display
 		This.visibleWorld  := []
 	}
 	
+	/*
+		method addPicture
+		description: 	Creates a new Picture to display
+		
+		syntax: 		newPicture := newDisplay.addPicture( file, [ pos, size, rotation ] )
+		
+		newPicture:		A new instance of the display.Picture class
+		
+		file:			The path to the picture file you want displayed
+						e.g. "test.png"
+		
+		pos:			The position of the picture on the field
+						Has to be in the form [ posX, posY ] e.g. [ 1, 1 ]
+						Defaults to [ 1, 1 ]
+						It is important to know how sizing and positioning works in the display API
+						The position is relative to the size of the parent displays field, meaning that if the fields size is [ 1, 1 ] and the Pictures pos is [ 1, 1 ] the picture is centered
+							If the fields size is [ 2, 2 ] and the Pictures pos is [ 1, 1 ] it takes up the upper left quarter of the field
+		
+		size:			The size of the picture on the field
+						Has to be in the form [ sizeX, sizeY ] e.g. [ 1, 1 ]
+						Defaults to [ 1, 1 ]
+						It is important to know how sizing and positioning works in the display API
+						The size is relative to the size of the parent displays field, meaning that if the fields size is [ 1, 1 ] and the Pictures size is [ 1, 1 ] it takes up the entire field
+		
+		rotation:		The rotation of the picture on the field
+						Currently not implemented
+		
+	*/
+	
 	addPicture( file, pos = "", size = "" , rotation := 0 )
 	{
 		This.loadFile( file )
@@ -36,32 +93,80 @@ class display
 		return pic
 	}
 	
+	/*
+		method removePicture
+		description:	Removes a Picture Object from the field
+		
+		syntax: 		newDisplay.removePicture( newPicture )
+		
+		newPicture:		The Picture Object you want to remove from the field
+						This is uneccessary since any picture that has lost all of it's references will be automatically deleted and removed
+						If you want to make a Picture invisible rather use it's setVisible method instead
+	*/
+	
 	removePicture( pic )
 	{
 		This.removeFromVisibleWorld( pic )
 	}
+	
+	/*
+		method setAutoRedraw
+		description:	Defines if changes done to pictures should lead to an immediate redraw
+		
+		syntax:			newDisplay.setAutoRedraw( bAutoRedraw )
+		
+		bAutoRedraw:	Defines whether the option should be active or not
+						Is a boolean value ( 0 = Auto-Redraw is deactivated | 1 Auto-Redraw is activated )
+	*/
 	
 	setAutoRedraw( bAutoRedraw )
 	{
 		This.autoRedraw := bAutoRedraw
 	}
 	
+	/*
+		method draw
+		description:	Draws everything on the field and outputs it to the GUI/Control
+		
+		syntax			newDisplay.draw()
+	*/
+	
+	draw()
+	{
+		API := This.getAPI()
+		if ( API.prepareBuffer() )
+		{
+			For zLayerID, picList in This.visibleWorld
+			{
+				if ( API.prepareZLayer( zLayerID ) )
+					For idPic in picList
+						API.drawPic( Object( idPic ) )
+				API.flushZLayer()
+			}
+		}
+		API.flushBufferToGUI()
+	}
+	
+	/*
+		class display.Picture
+		description: 	The Picture class returned by the addPicture method.
+						Shouldn't be instanced directly
+						A new picture is always invisible
+	*/
+	
 	class Picture
 	{
 		visible := 0
 		
-		__New( display )
-		{
-			This.setPosition( [ 0, 0 ] )
-			This.setZLayer( 1 )
-			This.setParent( display )
-		}
-		
-		__Delete()
-		{
-			This.setVisible( false )
-			This.getParent().notifyChange( This )
-		}
+		/*
+			method setPosition
+			description:	Sets the position of the picture on the field
+			
+			syntax:			newPicture.setPosition( pos )
+			
+			pos:			The position of the picture on the field
+							Has to be in the form [ posX, posY ] e.g. [ 1, 1 ]
+		*/
 		
 		setPosition( pos )
 		{
@@ -70,10 +175,30 @@ class display
 				This.getParent().notifyChange( This )
 		}
 		
-		getPosition()
+		/*
+			method setSize
+			description:	Sets the size of the picture on the field
+			
+			syntax:			newPicture.setSize( size )
+			
+			pos:			The size of the picture on the field
+							Has to be in the form [ sizeX, sizeY ] e.g. [ 1, 1 ]
+		*/
+		
+		setSize( size )
 		{
-			return This.pos
+			This.size := size
+			if This.getVisible()
+				This.getParent().notifyChange( This )
 		}
+		
+		/*
+			method setRotation
+			description:	Sets the rotation of the picture on the field
+							Currently not implemented
+			
+			syntax:			newPicture.setRotation( rot )
+		*/
 		
 		setRotation( rot )
 		{
@@ -82,10 +207,15 @@ class display
 				This.getParent().notifyChange( This )
 		}
 		
-		getRotation()
-		{
-			return this.rot
-		}
+		/*
+			method setFile
+			description:	Sets the picture on the field
+			
+			syntax:			newPicture.setFile( fileName )
+			
+			fileName:		The path of the file you want to display
+							e.g. "test.png"
+		*/
 		
 		setFile( fileName )
 		{
@@ -101,10 +231,16 @@ class display
 				This.getParent().notifyChange( This )
 		}
 		
-		getFile()
-		{
-			return This.fileName
-		}
+		/*
+			method setVisible
+			description:	Defines wether a Picture is visible on the field or not
+							Since they start invisible making them visible is neccessary to display the on the GUI
+			
+			syntax:			newPicture.setVisible( bVisible )
+			
+			bVisible:		Defines visibility
+							Boolean value (0 = invisible | 1 = visible )
+		*/
 		
 		setVisible( bVisible )
 		{
@@ -112,6 +248,16 @@ class display
 			{
 				This.visible := !!bVisible, This.getParent().notifyChange( This )
 			}
+		}
+		
+		getPosition()
+		{
+			return This.pos
+		}
+		
+		getRotation()
+		{
+			return this.rot
 		}
 		
 		getVisible()
@@ -131,16 +277,27 @@ class display
 			return This.zLayer
 		}
 		
-		setSize( size )
-		{
-			This.size := size
-			if This.getVisible()
-				This.getParent().notifyChange( This )
-		}
-		
 		getSize()
 		{
 			return This.size
+		}
+		
+		getFile()
+		{
+			return This.fileName
+		}
+		
+		__New( display )
+		{
+			This.setPosition( [ 0, 0 ] )
+			This.setZLayer( 1 )
+			This.setParent( display )
+		}
+		
+		__Delete()
+		{
+			This.setVisible( false )
+			This.getParent().notifyChange( This )
 		}
 		
 		setParent( parent )
@@ -209,7 +366,7 @@ class display
 	{
 		if ( pic.getVisible() )
 		{
-			This.foadFile( pid.getFile() )
+			This.loadFile( pid.getFile() )
 			This.addToVisibleWorld( pic )
 		}
 		else
@@ -220,7 +377,7 @@ class display
 	
 	removeFromVisibleWorld( pic )
 	{
-		if ( This.visiblePics.hasKey( idPic := Object( pic ) ) )
+		if ( This.visiblePics.hasKey( idPic := &pic) )
 		{
 			zLayerID := This.visiblePics[ idPic ]
 			This.visibleWorld[ zLayerId ].Delete( idPic ) 
@@ -232,25 +389,9 @@ class display
 	addToVisibleWorld( pic )
 	{
 		This.removeFromVisibleWorld( pic )
-		This.visiblePics[ idPic := Object( pic ) ] := zLayerId := pic.getZLayer()
+		This.visiblePics[ idPic :=  &pic ] := zLayerId := pic.getZLayer()
 		This.visibleWorld[ zLayerId, idPic ] := idPic
 		This.hasChanged[ zLayerId ] := 1
-	}
-	
-	draw()
-	{
-		API := This.getAPI()
-		if ( API.prepareBuffer() )
-		{
-			For zLayerID, picList in This.visibleWorld
-			{
-				if ( API.prepareZLayer( zLayerID ) )
-					For idPic in picList
-						API.drawPic( Object( idPic ) )
-				API.flushZLayer()
-			}
-		}
-		API.flushBufferToGUI()
 	}
 	
 }
