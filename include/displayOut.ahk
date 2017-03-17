@@ -1,4 +1,4 @@
-﻿#include logError.ahk
+﻿#include %A_LineFile%\..\logError.ahk
 
 /*
 API display OutPut
@@ -50,6 +50,7 @@ class display
 		}
 		This.visiblePics   := {}
 		This.visibleWorld  := []
+		This.hasChanged    := {}
 	}
 	
 	/*
@@ -64,11 +65,13 @@ class display
 						e.g. "test.png"
 		
 		pos:			The position of the picture on the field
-						Has to be in the form [ posX, posY ] e.g. [ 1, 1 ]
+						Has to be in the form [ posX, posY ] e.g. [ 1, 1 ] or in the form of [ posX, posY, posZ ]
 						Defaults to [ 1, 1 ]
 						It is important to know how sizing and positioning works in the display API
 						The position is relative to the size of the parent displays field, meaning that if the fields size is [ 1, 1 ] and the Pictures pos is [ 1, 1 ] the picture is centered
 							If the fields size is [ 2, 2 ] and the Pictures pos is [ 1, 1 ] it takes up the upper left quarter of the field
+						The Z position defines which picture is drawn on top and which on bottom
+							Pictures with a higher Z coordinate are drawn on top of others
 		
 		size:			The size of the picture on the field
 						Has to be in the form [ sizeX, sizeY ] e.g. [ 1, 1 ]
@@ -122,6 +125,8 @@ class display
 	setAutoRedraw( bAutoRedraw )
 	{
 		This.autoRedraw := bAutoRedraw
+		if ( bAutoRedraw && This.hasChanged._newEnum().next( k, v ) )
+			This.notifyChange()
 	}
 	
 	/*
@@ -138,12 +143,13 @@ class display
 		{
 			For zLayerID, picList in This.visibleWorld
 			{
-				if ( API.prepareZLayer( zLayerID ) )
+				if ( API.prepareZLayer( zLayerID, This.hasChanged[ zLayerID ] ) )
 					For idPic in picList
 						API.drawPic( Object( idPic ) )
 				API.flushZLayer()
 			}
 		}
+		This.hasChanged := {}
 		API.flushBufferToGUI()
 	}
 	
@@ -165,12 +171,17 @@ class display
 			syntax:			newPicture.setPosition( pos )
 			
 			pos:			The position of the picture on the field
-							Has to be in the form [ posX, posY ] e.g. [ 1, 1 ]
+							Has to be in the form [ posX, posY ] e.g. [ 1, 1 ] or [ posX, posY, posZ ]
+							The Z position defines which picture is drawn on top and which on bottom
+								Pictures with a higher Z coordinate are drawn on top of others
 		*/
 		
 		setPosition( pos )
 		{
-			This.pos := pos
+			Loop, 2
+				This.pos[ A_Index ] := pos[ A_Index ]
+			if pos.hasKey( 3 )
+				This.setZLayer( pos.3 )
 			if ( This.getVisible() )
 				This.getParent().notifyChange( This )
 		}
@@ -272,7 +283,7 @@ class display
 		
 		getPosition()
 		{
-			return This.pos
+			return This.pos.clone()
 		}
 		
 		getRotation()
@@ -292,7 +303,7 @@ class display
 		
 		getSize()
 		{
-			return This.size
+			return This.size.clone()
 		}
 		
 		getFile()
@@ -315,7 +326,7 @@ class display
 		
 		setParent( parent )
 		{
-			This.parent := Object( parent )
+			This.parent := &parent
 		}
 		
 		getParent()
@@ -326,14 +337,20 @@ class display
 	
 	setFieldSize( size )
 	{
-		if !( size.1 > 0 && size.2 > 0 )
+		if  ( !( size.1 > 0 && size.2 > 0 ) )
 			return 1
-		This.size := size
+		else if !( This.size.1 = size.1 && This.size.2 = This.size.2 )
+			This.size := size, This.notifyChange()
 	}
 	
 	getFieldSize()
 	{
 		return This.size
+	}
+	
+	getAutoRedraw()
+	{
+		return This.autoRedraw
 	}
 	
 	setAPI( usedAPI )
@@ -377,14 +394,15 @@ class display
 	
 	notifyChange( pic = "" )
 	{
-		if ( pic.getVisible() )
-		{
-			This.loadFile( pid.getFile() )
-			This.addToVisibleWorld( pic )
-		}
-		else
-			This.removeFromVisibleWorld( pic )
-		if ( This.autoRedraw )
+		if ( isObject( pic ) )
+			if ( pic.getVisible() )
+			{
+				This.loadFile( pic.getFile() )
+				This.addToVisibleWorld( pic )
+			}
+			else
+				This.removeFromVisibleWorld( pic )
+		if ( This.getAutoRedraw() )
 			This.draw()
 	}
 	
@@ -408,6 +426,12 @@ class display
 	}
 	
 }
+
+/*
+	class gdipAPI
+	description:	This is a class used by the displayClass as Backend to display the pictures
+					No need to understand it
+*/
 
 class gdipAPI 
 {
@@ -532,7 +556,7 @@ class gdipAPI
 			logError( "Can't connect to display:display needs to have a field size", A_ThisFunc, 3 )
 			return 1
 		}
-		This.display := Object( connectedDisplay )
+		This.display := &connectedDisplay
 	}
 	
 	getDisplay()
@@ -634,15 +658,18 @@ class gdipAPI
 		
 	loadPicture( pictureFile )
 	{
-		DllCall( "gdiplus\GdipCreateBitmapFromFile", "WStr", pictureFile, "Ptr*", pBitmap )
-		DllCall( "gdiplus\GdipGetImageWidth", "Ptr", pBitmap, "UInt*", w )
-		DllCall( "gdiplus\GdipGetImageHeight", "Ptr", pBitmap, "UInt*", h )
-		This.loadedPics[ pictureFile ] := { pBitmap: pBitmap, w: w, h: h }
+		if !This.isLoaded( pictureFile )
+		{
+			DllCall( "gdiplus\GdipCreateBitmapFromFile", "WStr", pictureFile, "Ptr*", pBitmap )
+			DllCall( "gdiplus\GdipGetImageWidth", "Ptr", pBitmap, "UInt*", w )
+			DllCall( "gdiplus\GdipGetImageHeight", "Ptr", pBitmap, "UInt*", h )
+			This.loadedPics[ pictureFile ] := { pBitmap: pBitmap, w: w, h: h }
+		}
 	}
 	
 	isLoaded( pictureFile )
 	{
-		return This.loadedPictures.hasKey( pictureFile )
+		return This.loadedPics.hasKey( pictureFile )
 	}
 	
 	unloadPicture( pictureFile )
