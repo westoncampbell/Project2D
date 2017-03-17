@@ -629,6 +629,8 @@ class gdipAPI
 		if !pBitmap.hasKey( "pGraphics" )
 		{
 			DllCall( "gdiplus\GdipGetImageGraphicsContext", "Ptr", pBitmap.pBitmap, "Ptr*", pGraphics )
+			DllCall( "gdiplus\GdipSetSmoothingMode", "Ptr", pGraphics, "Int", 3 )
+			DllCall( "gdiplus\GdipSetInterpolationMode", "Ptr", pGraphics, "Int", 5 )
 			pBitmap.pGraphics := pGraphics
 		}
 	}
@@ -647,6 +649,8 @@ class gdipAPI
 		size := This.getTargetSize()
 		hDC := DllCall( "GetDC", "Ptr", hWND := This.getDisplay().getTargetHWND() )
 		DllCall( "gdiplus\GdipCreateFromHDC", "Ptr", hDC, "Ptr*", pGraphics )
+		DllCall( "gdiplus\GdipSetSmoothingMode", "Ptr", pGraphics, "Int", 3 )
+		DllCall( "gdiplus\GdipSetInterpolationMode", "Ptr", pGraphics, "Int", 5 )
 		return { w: size.1, h: size.2, pGraphics: pGraphics, hDC: hDC, hWND: hWND }
 	}
 	
