@@ -3,7 +3,7 @@
 
 SetBatchLines,-1
 
-Msgbox A small Test Script to showcase the displayOut API`nControls:`nwasd: move Player`nqe:   change Players size`nf:    rotate Player
+Msgbox A small Test Script to showcase the displayOut API`nControls:`nwasd: move Player`nqe:   change Players size`nf:    rotate Player`nEnter: suprise 
 
 mapGrid 		:= []
 
@@ -54,11 +54,7 @@ d::pos := playerPic.getPosition(), playerPic.setPosition( [ mod( pos.1, 5 ) + 1,
 
 Enter::
 pos := playerPic.getPosition()
-pArray := createExplosion( displayOutput, playerPic.getFile(), [ pos.1, pos.2, 2 ] )
-return
-
-updateParticle:
-updateParticles( pArray )
+Particles.createExplosion( displayOutput, playerPic.getFile(), [ pos.1, pos.2, 2 ] )
 return
 
 GuiSize:
@@ -69,49 +65,60 @@ return
 GuiClose:
 ExitApp
 
-createExplosion( display, pictureFile, spawnPosition, nr= "" )
+class Particles
 {
-	if !nr
-		Random, nr, 5, 10
-	autoRedraw := display.getAutoRedraw()
-	display.setAutoRedraw( 0 )
-	pArray := { lastUpdated:A_TickCount, particles:[] }
-	Loop % nr
+	static particles   := []
+	
+	createExplosion( display, pictureFile, spawnPosition, nr= "" )
 	{
-		Random, direction, 0, 360
-		Random, velocity,  30,100
-		velocity  := velocity/75
-		direction := direction * aTan( 1 )/45
-		particle  := { direction:[ sin( direction ), cos( direction ) ], velocity:velocity, pic:display.addPicture( pictureFile, spawnPosition ) }
-		particle.pic.setVisible( 1 )
-		pArray.particles.push( particle )
+		if !nr
+			Random, nr, 5, 10
+		autoRedraw := display.getAutoRedraw()
+		display.setAutoRedraw( 0 )
+		if !This.hasKey( "lastUpdated" )
+			This.lastUpdated := A_TickCount
+		else
+			This.update( display )
+		Loop % nr
+		{
+			Random, direction, 0, 360
+			Random, velocity,  20,50
+			velocity  := velocity/50
+			direction := direction * aTan( 1 )/45
+			particle  := { direction:[ sin( direction ), cos( direction ) ], velocity:velocity, pic:display.addPicture( pictureFile, spawnPosition ) }
+			particle.pic.setVisible( 1 )
+			This.particles.push( particle )
+		}
+		SetTimer,updateParticle, -1
+		display.setAutoRedraw( autoRedraw )
 	}
-	SetTimer,updateParticle, -1
-	display.setAutoRedraw( autoRedraw )
-	return pArray
+
+	update( display )
+	{
+		timeElapsed := ( A_TickCount - This.lastUpdated ) / 1000
+		This.lastUpdated := A_TickCount
+		decay := 0.5
+		autoRedraw := display.getAutoRedraw()
+		display.setAutoRedraw( 0 )
+		For each, particle in This.particles
+		{
+			if ( particle.velocity - decay * timeElapsed < 0 )
+			{
+				This.particles.Delete( each )
+				continue
+			}
+			pos   := particle.pic.getPosition()
+			pos.1 += ( particle.velocity - ( decay * timeElapsed / 2 ) ) * particle.direction.1 * timeElapsed
+			pos.2 += ( particle.velocity - ( decay * timeElapsed / 2 ) ) * particle.direction.2 * timeElapsed
+			particle.pic.setPosition( pos )
+			particle.velocity -= decay * timeElapsed
+		}
+		if ( This.particles._NewEnum().Next( k, v ) )
+			SetTimer,updateParticle, -1
+		display.setAutoRedraw( autoRedraw )
+	}
 }
 
-updateParticles( pArray )
-{
-	timeElapsed := ( A_TickCount - pArray.lastUpdated ) / 1000
-	toDelete := []
-	decay := 0.3
-	autoRedraw := display.getAutoRedraw()
-	display.setAutoRedraw( 0 )
-	For each, particle in pArray.particles
-	{
-		if ( particle.velocity - decay * timeElapsed < 0 )
-		{
-			pArray.particles.Delete( each )
-			continue
-		}
-		pos   := particle.pic.getPosition()
-		pos.1 += ( particle.velocity - ( decay * timeElapsed / 2 ) ) * particle.direction.1 * timeElapsed
-		pos.2 += ( particle.velocity - ( decay * timeElapsed / 2 ) ) * particle.direction.2 * timeElapsed
-		particle.pic.setPosition( pos )
-		particle.velocity -= decay * timeElapsed
-	}
-	if ( pArray.particles._NewEnum().Next( k, v ) )
-		SetTimer,updateParticle, -1
-	display.setAutoRedraw( autoRedraw )
-}
+updateParticle:
+Particles.update( displayOutput )
+return
