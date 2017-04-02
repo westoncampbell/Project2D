@@ -1,14 +1,16 @@
 ﻿#include %A_LineFile%\..\logError.ahk
+#include %A_LineFile%\..\classGDIp.ahk
+#include %A_LineFile%\..\indirectReference.ahk
 
 /*
-API display OutPut
-author:      nnnik
-
-description: The display Output API is used to output images on a GUI while having certain control over them.
-
-general:     First you create an instance of the display class.
-Then you use it's methods to create picture objects.
-With these picture objects you can then control what exactly is displayed how.
+	API display OutPut
+	author:      nnnik
+	
+	description: The display Output API is used to output images on a GUI while having certain control over them.
+	
+	general:     First you create an instance of the display class.
+	Then you use it's methods to create picture objects.
+	With these picture objects you can then control what exactly is displayed how.
 */
 
 class display
@@ -23,11 +25,11 @@ class display
 		hWND:			The handle of the Window or control you want to output data to
 		
 		size:			The size of the field of the display
-						Has to be in the form [ sizeX, sizeY ]
-						( optional defaults to [ 1, 1 ] )
+		Has to be in the form [ sizeX, sizeY ]
+		( optional defaults to [ 1, 1 ] )
 		
 		usedAPI: 		The backend API used to output to the Window
-						So far it can only be "gdipAPI" or gdipAPI which will use gdip to display the output
+		So far it can only be "gdipAPI" or gdipAPI which will use gdip to display the output
 		
 	*/
 	
@@ -48,9 +50,6 @@ class display
 			logError( "Can't create display:Can't connect to API", A_ThisFunc, 3 )
 			return
 		}
-		This.visiblePics   := {}
-		This.visibleWorld  := []
-		This.hasChanged    := {}
 	}
 	
 	/*
@@ -62,71 +61,37 @@ class display
 		newPicture:		A new instance of the display.Picture class
 		
 		file:			The path to the picture file you want displayed
-						e.g. "test.png"
+		e.g. "test.png"
 		
 		pos:			The position of the picture on the field
-						Has to be in the form [ posX, posY ] e.g. [ 1, 1 ] or in the form of [ posX, posY, posZ ]
-						Defaults to [ 1, 1 ]
-						It is important to know how sizing and positioning works in the display API
-						The position is relative to the size of the parent displays field, meaning that if the fields size is [ 1, 1 ] and the Pictures pos is [ 1, 1 ] the picture is centered
-							If the fields size is [ 2, 2 ] and the Pictures pos is [ 1, 1 ] it takes up the upper left quarter of the field
-						The Z position defines which picture is drawn on top and which on bottom
-							Pictures with a higher Z coordinate are drawn on top of others
+		Has to be in the form [ posX, posY ] e.g. [ 1, 1 ] or in the form of [ posX, posY, posZ ]
+		Defaults to [ 1, 1 ]
+		It is important to know how sizing and positioning works in the display API
+		The position is relative to the size of the parent displays field, meaning that if the fields size is [ 1, 1 ] and the Pictures pos is [ 1, 1 ] the picture is centered
+		If the fields size is [ 2, 2 ] and the Pictures pos is [ 1, 1 ] it takes up the upper left quarter of the field
+			The Z position defines which picture is drawn on top and which on bottom
+		Pictures with a higher Z coordinate are drawn on top of others
 		
 		size:			The size of the picture on the field
-						Has to be in the form [ sizeX, sizeY ] e.g. [ 1, 1 ]
-						Defaults to [ 1, 1 ]
-						It is important to know how sizing and positioning works in the display API
-						The size is relative to the size of the parent displays field, meaning that if the fields size is [ 1, 1 ] and the Pictures size is [ 1, 1 ] it takes up the entire field
+		Has to be in the form [ sizeX, sizeY ] e.g. [ 1, 1 ]
+		Defaults to [ 1, 1 ]
+		It is important to know how sizing and positioning works in the display API
+		The size is relative to the size of the parent displays field, meaning that if the fields size is [ 1, 1 ] and the Pictures size is [ 1, 1 ] it takes up the entire field
 		
 		rotation:		The rotation of the picture on the field
-						Currently not implemented
+		Currently not implemented
 		
 	*/
 	
 	addPicture( file, pos = "", size = "" , rotation := 0 )
 	{
-		This.loadFile( file )
-		pic := new This.Picture( This )
-		pic.setPosition( isObject( pos ) ? pos : [ 1, 1 ]  )
+		pic := new This.Picture()
+		pic.setDisplay( This )
+		pic.setPosition( isObject( pos ) ? pos : [ 1, 1, 1 ]  )
 		pic.setSize( isObject( size ) ? size : [ 1, 1 ]  )
 		pic.setRotation( 0 )
 		pic.setFile( file )
-		This.notifyChange( pic )
 		return pic
-	}
-	
-	/*
-		method removePicture
-		description:	Removes a Picture Object from the field
-		
-		syntax: 		newDisplay.removePicture( newPicture )
-		
-		newPicture:		The Picture Object you want to remove from the field
-						This is uneccessary since any picture that has lost all of it's references will be automatically deleted and removed
-						If you want to make a Picture invisible rather use it's setVisible method instead
-	*/
-	
-	removePicture( pic )
-	{
-		This.removeFromVisibleWorld( pic )
-	}
-	
-	/*
-		method setAutoRedraw
-		description:	Defines if changes done to pictures should lead to an immediate redraw
-		
-		syntax:			newDisplay.setAutoRedraw( bAutoRedraw )
-		
-		bAutoRedraw:	Defines whether the option should be active or not
-						Is a boolean value ( 0 = Auto-Redraw is deactivated | 1 Auto-Redraw is activated )
-	*/
-	
-	setAutoRedraw( bAutoRedraw )
-	{
-		This.autoRedraw := bAutoRedraw
-		if ( bAutoRedraw && This.hasChanged._newEnum().next( k, v ) )
-			This.notifyChange()
 	}
 	
 	/*
@@ -139,30 +104,125 @@ class display
 	draw()
 	{
 		API := This.getAPI()
-		if ( API.prepareBuffer() )
+		API.prepareFrame()
+		For zLayerID, zLayer in This.zLayers
+			API.drawZLayer( zLayer )
+		API.flushFrame()
+	}
+	
+	/*
+		method setDisplayStyle
+		description:	Defines the looks of the pictures that are drawn onto the GUI
+		Can make pictures look very smooth or pixelated
+		
+		syntax:			newDisplay.setDisplayStyle( drawStyle )
+		
+		drawStyle:		Can be either "pixelated" or "smooth"
+		
+	*/
+	
+	setDrawStyle( drawStyle )
+	{
+		This.drawStyle := drawStyle,This.getAPI().notifyDrawStyle()
+	}
+	
+	setPixelPerField( pix )
+	{
+		This.minPix := pix
+	}
+	
+	setTarget( hWND )
+	{
+		This.targetHWND := hWND
+		This.getAPI().notifyTarget()
+	}
+	
+	setFieldSize( size )
+	{
+		if  ( !( size.1 > 0 && size.2 > 0 ) )
+			return 1
+		else if !( This.size.1 = size.1 && This.size.2 = This.size.2 )
+			This.size := size
+		This.getAPI().notifyField()
+	}
+	
+	setAPI( usedAPI )
+	{
+		global
+		if ( isObject( usedAPI ) || isObject( usedAPI := %usedAPI% ) )
 		{
-			For zLayerID, picList in This.visibleWorld
-			{
-				if ( API.prepareZLayer( zLayerID, This.hasChanged[ zLayerID ] ) )
-					For idPic in picList
-						API.drawPic( Object( idPic ) )
-				API.flushZLayer()
-			}
+			This.API := new usedAPI( This )
+			This.API.notifyTarget()
+			This.API.notifyField()
+			This.API.notifyDrawStyle()
+			return !isObject( This.API )
 		}
-		This.hasChanged := {}
-		API.flushBufferToGUI()
+		return 1
+	}
+	
+	getFieldSize()
+	{
+		return This.size
+	}
+	
+	getAPI()
+	{
+		return This.API
+	}
+	
+	getTargetHWND()
+	{
+		return This.targetHWND
+	}
+	
+	getTargetSize()
+	{
+		VarSetCapacity( rc, 16 )
+		DllCall("GetClientRect", "Ptr", This.targetHWND, "Ptr", &rc )
+		return [ NumGet( rc, 8, "UInt"), NumGet( rc, 12, "UInt") ]
+	}
+	
+	getDrawStyle()
+	{
+		return This.drawStyle
+	}
+	
+	getPixelPerField()
+	{
+		return This.minPix
+	}
+	
+	registerFile( fileName )
+	{
+		if !( ( API := This.getAPI() ).isLoaded( fileName ) )
+			API.loadPicture( fileName )
 	}
 	
 	/*
 		class display.Picture
 		description: 	The Picture class returned by the addPicture method.
-						Shouldn't be instanced directly
-						A new picture is always invisible
+		Shouldn't be instanced directly
+		A new picture is always invisible
 	*/
 	
 	class Picture
 	{
-		visible := 0
+		
+		/*
+			method setFile
+			description:	Sets the picture on the field
+			
+			syntax:			newPicture.setFile( fileName )
+			
+			fileName:		The path of the file you want to display
+			e.g. "test.png"
+		*/
+		
+		setFile( fileName )
+		{
+			This.fileName := fileName
+			This.getDisplay().registerFile( fileName )
+		}
 		
 		/*
 			method setPosition
@@ -171,19 +231,29 @@ class display
 			syntax:			newPicture.setPosition( pos )
 			
 			pos:			The position of the picture on the field
-							Has to be in the form [ posX, posY ] e.g. [ 1, 1 ] or [ posX, posY, posZ ]
-							The Z position defines which picture is drawn on top and which on bottom
-								Pictures with a higher Z coordinate are drawn on top of others
+			Has to be in the form [ posX, posY, posZ ] e.g. [ 1, 1, 1 ]
+			The Z position defines which picture is drawn on top and which on bottom
+			Pictures with a higher Z coordinate are drawn on top of others
 		*/
 		
 		setPosition( pos )
 		{
-			Loop, 2
-				This.pos[ A_Index ] := pos[ A_Index ]
-			if pos.hasKey( 3 )
-				This.setZLayer( pos.3 )
-			if ( This.getVisible() )
-				This.getParent().notifyChange( This )
+			if ( This.pos.3 != pos.3 )
+				This.joinZLayer()
+			This.pos := pos
+		}
+		
+		/*
+			method setRotation
+			description:	Sets the rotation of the picture on the field
+			Currently not implemented
+			
+			syntax:			newPicture.setRotation( rot )
+		*/
+		
+		setRotation( rot )
+		{
+			This.rot := rot
 		}
 		
 		/*
@@ -193,92 +263,44 @@ class display
 			syntax:			newPicture.setSize( size )
 			
 			pos:			The size of the picture on the field
-							Has to be in the form [ sizeX, sizeY ] e.g. [ 1, 1 ]
+			Has to be in the form [ sizeX, sizeY ] e.g. [ 1, 1 ]
 		*/
 		
 		setSize( size )
 		{
 			This.size := size
-			if This.getVisible()
-				This.getParent().notifyChange( This )
-		}
-		
-		/*
-			method setRotation
-			description:	Sets the rotation of the picture on the field
-							Currently not implemented
-			
-			syntax:			newPicture.setRotation( rot )
-		*/
-		
-		setRotation( rot )
-		{
-			This.rot := rot
-			if ( This.getVisible() )
-				This.getParent().notifyChange( This )
-		}
-		
-		/*
-			method setFile
-			description:	Sets the picture on the field
-			
-			syntax:			newPicture.setFile( fileName )
-			
-			fileName:		The path of the file you want to display
-							e.g. "test.png"
-		*/
-		
-		setFile( fileName )
-		{
-			if ( This.fileName = fileName )
-				return
-			if !fileExist( fileName )
-			{
-				logError( "Couldn't find file:""" . fileName . """.", A_ThisFunc, 3 )
-				return
-			}
-			This.fileName := fileName
-			if ( This.getVisible() )
-				This.getParent().notifyChange( This )
 		}
 		
 		/*
 			method setVisible
 			description:	Defines wether a Picture is visible on the field or not
-							Since they start invisible making them visible is neccessary to display the on the GUI
+			Since they start invisible making them visible is neccessary to display the on the GUI
 			
 			syntax:			newPicture.setVisible( bVisible )
 			
 			bVisible:		Defines visibility
-							Boolean value (0 = invisible | 1 = visible )
+			Boolean value (0 = invisible | 1 = visible )
 		*/
 		
 		setVisible( bVisible )
 		{
-			if ( !!bVisible ^ This.getVisible() )
-			{
-				This.visible := !!bVisible, This.getParent().notifyChange( This )
-			}
+			bVisible := !!bVisible
+			if ( bVisible ^ This.getVisible() )
+				if ( bVisible )
+					This.joinZLayer()
+			else
+				This.leaveZLayer()
 		}
 		
 		/*
-			method setZLayer
-			description:	Defines the Z position of a Picture
-							Sometimes it is important to draw certain pictures on top of others this function does that
-			
-			syntax:			newPicture.setZLayer( zLayer )
-			
-			zLayer:			The Z position of the picture
-							Pictures with a higher z Position are drawn on top of others
-			
-			remarks:		Performance wise it might be usefull to split zLayers that contain pictures that change a lot from zLayers that contain pictures that don't change at all
+			method getters
+			description:	Returns the value of the attributes set above. 
+			Just replace set with get and you will get the value of the Attribute
 		*/
 		
-		setZLayer( zLayer )
+		getFile()
 		{
-			This.zLayer := zLayer
-			if This.getVisible()
-				This.getParent().notifyChange( This )
+			return This.fileName
 		}
 		
 		getPosition()
@@ -291,9 +313,33 @@ class display
 			return this.rot
 		}
 		
+		getSize()
+		{
+			return This.size.clone()
+		}
+		
 		getVisible()
 		{
-			return This.visible
+			return !!This.visible
+		}
+		
+		/*
+			method internals
+			description:	Methods used to make the pictures work internally
+			Proceed with caution
+		*/
+		
+		joinZLayer()
+		{
+			This.leaveZLayer()
+			This.zLayer := This.getDisplay().getZLayer( This.getPosition().3 )
+			This.zLayer.addPicture( This )
+		}
+		
+		leaveZLayer()
+		{
+			This.zLayer.removePicture( This )
+			This.delete( "zLayer" )
 		}
 		
 		getZLayer()
@@ -301,142 +347,93 @@ class display
 			return This.zLayer
 		}
 		
-		getSize()
+		setDisplay( parentDisplay )
 		{
-			return This.size.clone()
+			This.parentDisplay := new indirectReference( parentDisplay )
 		}
 		
-		getFile()
+		getDisplay()
 		{
-			return This.fileName
-		}
-		
-		__New( display )
-		{
-			This.setPosition( [ 0, 0 ] )
-			This.setZLayer( 1 )
-			This.setParent( display )
+			return This.parentDisplay
 		}
 		
 		__Delete()
 		{
-			This.setVisible( false )
-			This.getParent().notifyChange( This )
+			This.leaveZLayer()
 		}
 		
-		setParent( parent )
+	}
+	
+	getZLayer( zLayerID )
+	{
+		if !( This.zLayers.hasKey( zLayerID ) )
+			This.zLayers[ zLayerID ] := new This.ZLayer( This, zLayerID )
+		return This.zLayers[ zLayerID ]
+	}
+	
+	freeZLayer( zLayerID )
+	{
+		This.zLayers.Delete( zLayerID )
+	}
+	
+	class ZLayer
+	{
+		
+		__New( parentDisplay, layerID )
 		{
-			This.parent := &parent
+			This.visiblePictures := {}
+			This.parentDisplay   := new indirectReference( parentDisplay )
+			This.layerID         := layerID
 		}
 		
-		getParent()
+		__Delete()
 		{
-			return Object( This.parent )
+			This.parentDisplay.freeZLayer( This.layerID )
 		}
-	}
-	
-	setFieldSize( size )
-	{
-		if  ( !( size.1 > 0 && size.2 > 0 ) )
-			return 1
-		else if !( This.size.1 = size.1 && This.size.2 = This.size.2 )
-			This.size := size, This.notifyChange()
-	}
-	
-	getFieldSize()
-	{
-		return This.size
-	}
-	
-	getAutoRedraw()
-	{
-		return This.autoRedraw
-	}
-	
-	setAPI( usedAPI )
-	{
-		global
-		if ( isObject( usedAPI ) || isObject( usedAPI := %usedAPI% ) )
-			return !isObject( This.API := new usedAPI( This ) )
-		return 1
-	}
-	
-	getAPI()
-	{
-		return This.API
-	}
-	
-	setTarget( hWND )
-	{
-		This.targetHWND := hWND
-	}
-	
-	getTargetHWND()
-	{
-		return This.targetHWND
-	}
-	
-	getTargetRect()
-	{
-		VarSetCapacity( rc, 16 )
-		DllCall("GetClientRect", "Ptr", This.targetHWND, "Ptr", &rc )
-		rect := []
-		Loop 4
-			rect.Push( NumGet( rc, A_Index * 4 - 4, "UInt") )
-		return rect
-	}
-	
-	loadFile( fileName )
-	{
-		if !This.getAPI().isLoaded( fileName )
-			This.getAPI().loadPicture( fileName )
-	}
-	
-	notifyChange( pic = "" )
-	{
-		if ( isObject( pic ) )
-			if ( pic.getVisible() )
-			{
-				This.loadFile( pic.getFile() )
-				This.addToVisibleWorld( pic )
-			}
-			else
-				This.removeFromVisibleWorld( pic )
-		if ( This.getAutoRedraw() )
-			This.draw()
-	}
-	
-	removeFromVisibleWorld( pic )
-	{
-		if ( This.visiblePics.hasKey( idPic := &pic) )
+		
+		addPicture( pic )
 		{
-			zLayerID := This.visiblePics[ idPic ]
-			This.visibleWorld[ zLayerId ].Delete( idPic ) 
-			This.visiblePics.Delete( idPic )
-			This.hasChanged[ zLayerId ] := 1
+			This.visiblePictures[ &pic ] := new indirectReference( pic )
 		}
-	}
-	
-	addToVisibleWorld( pic )
-	{
-		This.removeFromVisibleWorld( pic )
-		This.visiblePics[ idPic :=  &pic ] := zLayerId := pic.getZLayer()
-		This.visibleWorld[ zLayerId, idPic ] := idPic
-		This.hasChanged[ zLayerId ] := 1
+		
+		removePicture( pic )
+		{
+			This.visiblePictures.Delete( &pic )
+		}
+		
+		getVisiblePictures()
+		{
+			return This.visiblePictures
+		}
+		
+		touch()
+		{
+			This.hChanged := 1
+		}
+		
+		resetHasChanged()
+		{
+			This.hChanged := 0
+		}
+		
+		hasChanged()
+		{
+			return This.hChanged
+		}
+		
+		getID()
+		{
+			return This.layerID
+		}
+		
 	}
 	
 }
 
-/*
-	class gdipAPI
-	description:	This is a class used by the displayClass as Backend to display the pictures
-					No need to understand it
-*/
 
-class gdipAPI 
+
+class displayBackendAPI
 {
-	
-	static loaded := 0
 	
 	__New( connectedDisplay )
 	{
@@ -450,99 +447,17 @@ class gdipAPI
 			logError( "Can't create API instance:loadAPI failed", A_ThisFunc, 3 )
 			return
 		}
-		This.loadedPics := {}
-		This.zLayers    := {}
+		This.createPictureStorage()
+		This.createBuffers()
+		This.createNotificationQueue()
 	}
 	
 	__Delete()
 	{
-		For each, pBitmap in This.loadedPics
-			This.deletepBitmap( pBitmap )
-		For each, pBitmap in This.zLayers
-			This.deletepBitmap( pBitmap )
-		This.deletepBitmap( This.drawBuffer )
+		This.freeBuffers()
+		This.freePictureStorage()
+		This.freeAPI()
 	}
-	
-	loadAPI()
-	{
-		if !( gdipAPI.loaded++ )
-		{
-			if !DllCall( "GetModuleHandle", "Str", "gdiplus", "Ptr" )
-				if !DllCall( "LoadLibrary", "Str", "gdiplus" )
-				{
-					logError( "Can't load gdiplus.dll LastError:" . A_LastError, A_ThisFunc, 3 )
-					return 1
-				}
-			VarSetCapacity( si, A_PtrSize = 8 ? 24 : 16, 0)
-			si := Chr(1)
-			DllCall( "gdiplus\GdiplusStartup","Ptr*", pToken, "Ptr", &si, "Ptr", 0 )
-			gdipAPI.pToken := pToken
-		}
-	}
-	
-	freeAPI()
-	{
-		if ( !(--gdipAPI.loaded) )
-		{
-			DllCall( "gdiplus\GdiplusShutdown", "Ptr", gdipAPI.pToken )
-			if ( hModule := DllCall( "GetModuleHandle", "Str", "gdiplus", "Ptr" ) )
-				DllCall( "FreeLibrary", "Ptr", hModule )
-		}
-	}
-	
-	
-	prepareBuffer()
-	{
-		This.updateSize()
-		size := This.getSize()
-		if ( This.drawBuffer.w != size.1 || This.drawBuffer.h != size.2 )
-		{
-			This.deletepBitmap( This.drawBuffer )
-			This.drawBuffer := This.createpBitmap( size.1, size.2 )
-			This.openGraphics( This.drawBuffer )
-		}
-		This.clearpBitmap( This.drawBuffer, 0xFF000000 )
-		return 1
-	}
-	
-	prepareZLayer( id, hasChanged = 1 )
-	{
-		if ( ( zLayer := This.zLayers[ id ] ).w != This.getSize().1 || zLayer.h != This.getSize().2 )
-		{
-			This.deletepBitmap( zLayer )
-			zLayer := This.zLayers[ id ] := This.createpBitmap( This.getSize().1, This.getSize().2 )
-			This.openGraphics( This.zLayers[ id ] )
-			hasChanged := 1
-		}
-		if ( hasChanged )
-			This.clearpBitmap( zLayer )
-		This.activeZLayer := zLayer
-		return hasChanged
-	}
-	
-	drawPic( pic )
-	{
-		sourcepBitmap := This.loadedPics[ pic.getFile() ]
-		targetpBitmap := This.activeZLayer
-		rect    := This.translateCoordsToPixelRect( pic.getPosition(), pic.getSize() )
-		if ( This.drawImage( targetpBitmap.pGraphics, sourcepBitmap.pBitmap, rect.1, rect.2, rect.3, rect.4, 0, 0, sourcepBitmap.w, sourcepBitmap.h ) )
-			logError( "Can't draw pic", A_ThisFunc, 3 )
-	}
-	
-	flushZLayer()
-	{
-		This.delete( "activeZLayer" )
-	}
-	
-	flushBufferToGUI()
-	{
-		For each, zLayer in This.zLayers
-			This.pushpBitmap( This.drawBuffer, zLayer )
-		targetpBitmap := This.openTarget()
-		This.pushpBitmap( targetpBitmap, This.drawBuffer )
-		This.freeTarget( targetpBitmap )
-	}
-	
 	
 	setDisplay( connectedDisplay )
 	{
@@ -556,119 +471,37 @@ class gdipAPI
 			logError( "Can't connect to display:display needs to have a field size", A_ThisFunc, 3 )
 			return 1
 		}
-		This.display := &connectedDisplay
+		This.display := new indirectReference( connectedDisplay )
 	}
 	
 	getDisplay()
 	{
-		return Object( This.display )
-	}
-	
-	updateSize()
-	{
-		This.size := This.getTargetSize()
-		fieldSize := This.getDisplay().getFieldSize()
-		This.mul  := [ This.size.1 / fieldSize.1, This.size.2 / fieldSize.2 ]
-		This.add  := [ -This.mul.1 / 2, -This.mul.2 / 2 ]
-	}
-	
-	getSize()
-	{
-		return This.size
-	}
-	
-	translateCoordsToPixelRect( pos, size )
-	{
-		return [ Round( ( pos.1 - ( size.1/2 ) ) * This.mul.1 + This.add.1 ), Round( ( pos.2 - ( size.2/2 ) ) * This.mul.2 + This.add.2 ), Round( size.1 * This.mul.1 ), Round( size.2 * This.mul.2 ) ]
+		return This.display
 	}
 	
 	getTargetSize()
 	{
-		rect := This.getDisplay().getTargetRect()
-		rect.removeAt( 1, 2 )
-		return rect
+		return This.getDisplay().getTargetSize()
 	}
 	
-	createpBitmap( w, h )
+	getTargetHWND()
 	{
-		DllCall( "gdiplus\GdipCreateBitmapFromScan0", "UInt", w, "UInt", h, "UInt", 0, "UInt", 0x26200A, "Ptr", 0, "Ptr*", pBitmap )
-		Return { pBitmap : pBitmap, h: h, w: w }
+		return This.getDisplay().getTargetHWND()
 	}
 	
-	deletepBitmap( pBitmap )
+	getFieldSize()
 	{
-		This.closeGraphics( pBitmap )
-		if ( !isObject( pBitmap ) || ( pBitmap := pBitmap.pBitmap ) )
-			DllCall("gdiplus\GdipDisposeImage", "Ptr", pBitmap )
+		return This.getDisplay().getFieldSize()
 	}
 	
-	clearpBitmap( pBitmap, color = 0 )
+	getDrawStyle()
 	{
-		if !pBitmap.hasKey( "pGraphics" )
-			This.openGraphics( pBitmap )
-		DllCall( "gdiplus\GdipGraphicsClear", "Ptr", pBitmap.pGraphics, "UInt", color )
-	}
-		
-	pushpBitmap( targetpBitmap, sourcepBitmap )
-	{
-		if !( targetpBitmap.haskey( "pGraphics" ) )
-			This.openGraphics( targetpBitmap )
-		if ( This.drawImage( targetpBitmap.pGraphics, sourcepBitmap.pBitmap, 0, 0, targetpBitmap.w, targetpBitmap.h, 0, 0, sourcepBitmap.w, sourcepBitmap.h ) )
-			logError( "Can't push picture", A_ThisFunc, 3 )
+		return This.getDisplay().getDrawStyle()
 	}
 	
-	drawImage( tpGraphics, spBitmap, tx, ty, tw, th, sx, sy, sw, sh )
+	createPictureStorage()
 	{
-		if ( ret := DllCall( "gdiplus\GdipDrawImageRectRect", "Ptr", tpGraphics, "Ptr", spBitmap, "float", tx, "float", ty, "float", tw, "float", th, "float", sx, "float", sy, "float", sw, "float", sh, "UInt", 2, "Ptr", 0, "Ptr", 0, "Ptr", 1 ) )
-			logError( "Can't draw picture", A_ThisFunc, 3 )
-		return ret
-	}
-	
-	openGraphics( pBitmap )
-	{	
-		if !pBitmap.hasKey( "pGraphics" )
-		{
-			DllCall( "gdiplus\GdipGetImageGraphicsContext", "Ptr", pBitmap.pBitmap, "Ptr*", pGraphics )
-			DllCall( "gdiplus\GdipSetSmoothingMode", "Ptr", pGraphics, "Int", 3 )
-			DllCall( "gdiplus\GdipSetInterpolationMode", "Ptr", pGraphics, "Int", 5 )
-			pBitmap.pGraphics := pGraphics
-		}
-	}
-	
-	closeGraphics( pBitmap )
-	{
-		if pBitmap.hasKey( "pGraphics" )
-		{
-			DllCall( "gdiplus\GdipDeleteGraphics", "Ptr", pBitmap.pGraphics )
-			pBitmap.Delete( "pGraphics" )
-		}
-	}
-	
-	openTarget()
-	{
-		size := This.getTargetSize()
-		hDC := DllCall( "GetDC", "Ptr", hWND := This.getDisplay().getTargetHWND() )
-		DllCall( "gdiplus\GdipCreateFromHDC", "Ptr", hDC, "Ptr*", pGraphics )
-		DllCall( "gdiplus\GdipSetSmoothingMode", "Ptr", pGraphics, "Int", 3 )
-		DllCall( "gdiplus\GdipSetInterpolationMode", "Ptr", pGraphics, "Int", 5 )
-		return { w: size.1, h: size.2, pGraphics: pGraphics, hDC: hDC, hWND: hWND }
-	}
-	
-	freeTarget( targetpBitmap )
-	{
-		DllCall( "gdiplus\GdipReleaseDC", "Ptr", targetpBitmap.pGraphics, "Ptr", targetpBitmap.hDC )
-		DllCall( "ReleaseDC", "Ptr", targetpBitmap.hWND, "Ptr", targetpBitmap.hDC )
-	}
-		
-	loadPicture( pictureFile )
-	{
-		if !This.isLoaded( pictureFile )
-		{
-			DllCall( "gdiplus\GdipCreateBitmapFromFile", "WStr", pictureFile, "Ptr*", pBitmap )
-			DllCall( "gdiplus\GdipGetImageWidth", "Ptr", pBitmap, "UInt*", w )
-			DllCall( "gdiplus\GdipGetImageHeight", "Ptr", pBitmap, "UInt*", h )
-			This.loadedPics[ pictureFile ] := { pBitmap: pBitmap, w: w, h: h }
-		}
+		This.loadedPics := []
 	}
 	
 	isLoaded( pictureFile )
@@ -676,10 +509,246 @@ class gdipAPI
 		return This.loadedPics.hasKey( pictureFile )
 	}
 	
-	unloadPicture( pictureFile )
+	loadPicture( pictureFile )
 	{
-		This.deletepBitmap( This.loadedPictures[ pictureFile ] )
-		This.loadedPictures.Delete( pictureFile )
+		if !This.isLoaded( pictureFile )
+			if isObject( pic := This.APIloadPicture( pictureFile ) )
+				This.loadedPics[ pictureFile ] := pic
 	}
+	
+	freePicture( pictureFile )
+	{
+		This.loadedPics.Delete( pictureFile )
+	}
+	
+	createNotificationQueue()
+	{
+		This.notificationQueue := []
+	}
+	
+	notifyDrawStyle()
+	{
+		This.notify( "updateDrawStyle" )
+	}
+	
+	notifyTarget()
+	{
+		This.notify( "updateTarget" )
+	}
+	
+	notifyField()
+	{
+		This.notify( "updateField" )
+	}
+	
+	notify( option )
+	{
+		if ( !This.notificationQueue.hasKey( option ) && isFunc( This[ option ] ) )
+			This.notificationQueue[ option ] := This[ option ]
+	}
+	
+	handleNotifications()
+	{
+		For each, function in This.notificationQueue
+			function.Call( This )
+	}
+	
+}
 
+/*
+	class gdipAPI
+	description:	This is a class used by the displayClass as Backend to display the pictures
+	No need to understand it
+*/
+
+class gdipAPI extends displayBackendAPI
+{
+	
+	loadAPI()
+	{
+		This.api := new GDIp()
+	}
+	
+	freeAPI()
+	{
+		This.Delete( "api" )
+	}
+	
+	createBuffers()
+	{
+		This.zBuffers    := {}
+		This.frameBuffer := new This.ZBuffer()
+		This.frameBuffer.setDrawStyle( "Pixel" )
+	}
+	
+	getBuffer( zLayerID )
+	{
+		if !This.zBuffers.HasKey( zLayerID )
+		{
+			zBuffer := new This.ZBuffer()
+			zBuffer.setSize( This.getBufferSize() )
+			zBuffer.setDrawStyle( This.getBufferDrawStyle() )
+			This.zBuffers[ zLayerID ] := zBuffer
+		}
+		return This.zBuffers[ zLayerID ]
+	}
+	
+	updateTarget()
+	{
+		This.setBufferSize( This.getTargetSize() )
+	}
+	
+	setBufferSize( size )
+	{
+		This.bufferSize := size
+		For each, zBuffer in This.zBuffers
+			zBuffer.setSize( size )
+		This.frameBuffer.setSize( size )
+		This.updateField()
+	}
+	
+	getBufferSize()
+	{
+		return This.bufferSize
+	}
+	
+	updateDrawStyle()
+	{
+		This.setBufferDrawStyle( This.getDrawStyle() )
+	}
+	
+	setBufferDrawStyle( drawStyle )
+	{
+		This.drawStyle := drawStyle
+		For each, zBuffer in This.zBuffers
+			zBuffer.setDrawStyle( size )
+	}
+	
+	getBufferDrawStyle( drawStyle )
+	{
+		return This.drawStyle
+	}
+	
+	updateField()
+	{
+		This.setBufferFieldSize( This.getFieldSize() )
+	}
+	
+	setBufferFieldSize( fieldSize )
+	{
+		This.fieldSize := fieldSize
+		pixelSize :=  This.getBufferSize()
+		This.mul := [ Round( pixelSize.1 / fieldSize.1 ), Round( pixelSize.2 / fieldSize.2 ) ]
+		This.add := [ Round( -This.mul.1 / 2 ), Round( -This.mul.2 / 2 ) ]
+	}
+	
+	getBufferFieldSize()
+	{
+		return This.fieldSize
+	}
+	
+	APIloadPicture( pictureFile )
+	{
+		return new GDIp.Bitmap( pictureFile )
+	}
+	
+	fieldToPixel( pic )
+	{
+		pos     := pic.getPosition()
+		size    := pic.getSize()
+		return [ Round( ( pos.1 - size.1 / 2  ) * This.mul.1 + This.add.1 ), Round( ( pos.2 - size.2 / 2  ) * This.mul.2 + This.add.2 ), Round( size.1 * This.mul.1 ), Round( size.2 * This.mul.2 ) ]
+	}
+	
+	prepareFrame()
+	{
+		This.handleNotifications()
+	}
+	
+	drawZLayer( zLayer )
+	{
+		zBuffer := This.getBuffer( zLayer.getID() )
+		if ( zBuffer.hasChanged() || zLayer.hasChanged() )
+		{
+			This.redraw := 1
+			Graphics    := zBuffer.getGraphics()
+			Graphics.clear()
+			pics        := zLayer.getVisiblePictures()
+			For each, pic in pics
+			{
+				Bitmap := This.loadedPics[ pic.getFile() ]
+				size := Bitmap.getSize()
+				rect := [ 0, 0, size.1, size.2 ]
+				Graphics.drawBitmap( Bitmap, This.fieldToPixel( pic ), rect )
+			}
+		}
+	}
+	
+	flushFrame()
+	{
+		frameBuffer := This.frameBuffer
+		Graphics := frameBuffer.getGraphics()
+		size := This.getBufferSize()
+		rect := [ 0, 0, size.1, size.2 ]
+		if ( This.redraw )
+		{
+			Graphics.clear( 0xFF000000 )
+			for each, zBuffer in This.zBuffers
+				Graphics.drawBitmap( zBuffer.getBitmap(), rect, rect  )
+			This.redraw := 0
+		}
+		targetSize := This.getTargetSize()
+		targetRect := [ 0, 0, targetSize.1, targetSize.2 ]
+		DC := new GDI.DC( This.getTargetHWND() )
+		Graphics := DC.getGrapics()
+		Graphics.drawBitmap( frameBuffer.getBitmap(), targetRect, rect )
+	}
+	
+	class ZBuffer
+	{
+		
+		setSize( size )
+		{
+			This.size := size
+			This.bitmap := new GDIp.Bitmap( size* )
+			This.setDrawStyle()
+			This.touch()
+		}
+		
+		setDrawStyle( drawStyle = "" )
+		{
+			If ( !drawStyle || ( ( drawStyle != This.drawStyle  ) && This.drawStyle := drawStyle ) )
+			{
+				This.getGraphics().setSmoothingMode( { Pixel:3, Smooth:1 }[ This.drawStyle ] )
+				This.getGraphics().setInterpolationMode( { Pixel:5, Smooth:3 }[ This.drawStyle ] )
+				This.touch()
+			}
+		}
+		
+		getGraphics()
+		{
+			return This.bitmap.getGraphics()
+		}
+		
+		getBitmap()
+		{
+			return This.bitmap
+		}
+		
+		touch()
+		{
+			This.hChanged := 1
+		}
+		
+		hasChanged()
+		{
+			return This.hChanged
+		}
+		
+		resetHasChanged()
+		{
+			This.hChanged := 0
+		}
+		
+	}
+	
 }
