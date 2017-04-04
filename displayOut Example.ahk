@@ -10,18 +10,18 @@ mapGrid 		:= []
 GUI,Add,Picture,w300 h300
 GUI +hwndhOut +Resize
 GUI,Show
-if !isObject( displayOutput := new display( hOut + 0, [ 5, 5 ] ) )
+if !isObject( displayOutput := new display( hOut + 0, [ 20, 20 ] ) )
 	logError( "failed to create display", "", 4 )
 	;The first step of outputting pictures using the display API is by creating a new display Object
 	;The first parameter is a HWND that is used to output the video info to
 	;The second parameter is the size of the field of the display Object
-
-mapPic    := displayOutput.addPicture( "resources\images\bg_title.png", [ 3, 3, 1 ], [ 5, 5 ] )
+fieldSize := displayOutput.getFieldSize()
+mapPic    := displayOutput.addPicture( "resources\images\bg_0001.png", [ fieldSize.1/2 + 0.5 , fieldSize.2/2 + 0.5, 1 ], [ fieldSize.1, fieldSize.2 ] )
 	;Then you can add pictures to the display using the addPicture function of the display
 	;With the returned object you can modify how the picture should be displayed and where
 	;This creates a picture from the file "resources\images\bg_title.png" at the position [ 3, 3, 1 ] and the size [ 5, 5 ]
 
-playerPic := displayOutput.addPicture( "resources\images\player_up.png", [ 3, 3, 3 ] )
+playerPic := displayOutput.addPicture( "resources\images\player_up.png", [ 3, 3, 3 ], [ 0.9, 0.9 ] )
 	;This creates a picture from the file "resources\images\player_up.png"
 	;Also sets the position of the picture to [ 3, 3, 2 ]
 
@@ -36,7 +36,7 @@ playerFiles     := [ "resources\images\player_up.png", "resources\images\player_
 SetTimer,Redraw,16
 
 #if WinActive( "ahk_id " . hOut )
-f::
+	f::
 playerPic.setFile( playerFiles[ playerDirection := mod( playerDirection, 4 ) + 1 ] )
 ;Changes the players Picture/Direction
 return

@@ -638,8 +638,8 @@ class gdipAPI extends displayBackendAPI
 	{
 		This.fieldSize := fieldSize
 		pixelSize :=  This.getBufferSize()
-		This.mul := [ Round( pixelSize.1 / fieldSize.1 ), Round( pixelSize.2 / fieldSize.2 ) ]
-		This.add := [ Round( -This.mul.1 / 2 ), Round( -This.mul.2 / 2 ) ]
+		This.mul := [ pixelSize.1 / fieldSize.1, pixelSize.2 / fieldSize.2 ]
+		This.add := [ -This.mul.1 / 2, -This.mul.2 / 2 ]
 	}
 	
 	getBufferFieldSize()
