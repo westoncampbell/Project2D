@@ -282,7 +282,6 @@ Class Stage {
 	__New( displayOut ) {
 		size       := displayOut.getFieldSize()
 		this.Stage := displayOut.addPicture( "resources\images\bg_title.png", [ size.1/2 + 0.5, size.2/2 + 0.5 ,1 ], [ size.1, size.2 ] )
-		Msgbox % disp( This.stage )
 		this.Stage.setVisible( 1 )
 	}
 	
