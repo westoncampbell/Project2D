@@ -20,15 +20,15 @@
 #SingleInstance, Force ; Allow only one running instance of script
 #Persistent ; Keep the script permanently running until terminated
 #NoEnv ; Avoid checking empty variables for environment variables
-#Warn ; Enable warnings to assist with detecting common errors
 #NoTrayIcon ; Disable the tray icon of the script
+#Include include\displayOut.ahk
 SendMode, Input ; The method for sending keystrokes and mouse clicks
 SetWorkingDir, %A_ScriptDir% ; Set the working directory of the script
 SetBatchLines, -1 ; The speed at which the lines of the script are executed
 SetWinDelay, -1 ; The delay to occur after modifying a window
 SetControlDelay, -1 ; The delay to occur after modifying a control
 OnExit("OnUnload") ; Run a subroutine or function when exiting the script
-
+SetTimer,Redraw,16
 return ; End automatic execution
 ; ==============================================================================
 
@@ -95,26 +95,26 @@ WM_KEYDOWN(wParam, lParam, Msg, Hwnd) {
 }
 
 GuiCreate() {
-    Global ; Assume-global mode
-    Static Init := GuiCreate() ; Call function
-
-    Menu, Tray, Icon, resources\images\icon.ico
-    Gui, +LastFound -Resize +HWNDhProject2D
-    Gui, Color, 000000
-    Gui, Margin, 10, 10
+	Global ; Assume-global mode
+	Static Init := GuiCreate() ; Call function
+	
+	Menu, Tray, Icon, resources\images\icon.ico
+	Gui, +LastFound -Resize +HWNDhProject2D
+	Gui, Margin, 10, 10
 	Gui, Add, Edit, x0 y0 w0 h0 0x800 ; Focus
-	Gui, Add, Picture, x0 y0 w640 h640 vStage
-    Gui, Add, Picture, x0 y0 w32 h32 vHero BackgroundTrans
-    Gui, Add, Text, x10 y10 w620 r3 cFFFFFF vDebug BackgroundTrans
-    Gui, Show, w640 h640, Project 2D
-
-	Stage := new Stage("Stage")
+	;Gui, Add, Text, x10 y10 w620 r3 cFFFFFF vDebug BackgroundTrans
+	;GuiControl, Hide, Debug
+	Gui, Show, w640 h640, Project 2D
+	
+	displayOut := new display( hProject2D, [ 20, 20 ] )
+	
+	Stage := new Stage( displayOut )
 	Stage.Color("000000")
 	Stage.Background("bg_title.png")
-    Stage.Map("map_0000.map")
-
-	Hero := new Player("Hero")
-    Hero.Move(-1, -1, false)
+     Stage.Map("map_0000.map")
+	
+	Hero := new Player( displayOut )
+	Hero.Move(-1, -1, false)
 }
 
 GridAction(Action := "") {
@@ -279,73 +279,73 @@ GridAction(Action := "") {
 }
 
 Class Stage {
-    __New(Hwnd) {
-        this.Stage := Hwnd
-    }
-
+	__New( displayOut ) {
+		size       := displayOut.getFieldSize()
+		this.Stage := displayOut.addPicture( "resources\images\bg_title.png", [ size.1/2 + 0.5, size.2/2 + 0.5 ,1 ], [ size.1, size.2 ] )
+		this.Stage.setVisible( 1 )
+	}
+	
 	Background(File) {
-        Global ; Assume-global mode
-
-		GuiControl,, % this.Stage, % "resources\images\" (Background := File)
+		this.Stage.setFile( "resources\images\" . File )
 	}
-
-	Color(Hex) {
-		Gui, Color, % Hex
+	
+	Map(File) {
+		Global ; Assume-global mode
+		
+		GridMap := []
+		
+		FileRead, MapData, % "resources\maps\" (Map := File)
+		
+		For Each, Line In StrSplit(MapData, "`n", "`r") {
+			GridMap.Push(StrSplit(Line))
+		}
 	}
-
-    Map(File) {
-        Global ; Assume-global mode
-
-        GridMap := []
-
-        FileRead, MapData, % "resources\maps\" (Map := File)
-
-        For Each, Line In StrSplit(MapData, "`n", "`r") {
-            GridMap.Push(StrSplit(Line))
-        }
-    }
 }
 
 Class Player {
-    __New(Hwnd) {
-        this.Player := Hwnd
-    }
-
+	__New( displayOut ) {
+		this.Player := displayOut.addPicture( "resources\images\player_up.png", [ 1, 1, 2 ], [ 0.9, 0.9 ] )
+		this.Visible()
+	}
+	
 	Visible(Show := true) {
-		GuiControl, % (Show ? "Show" : "Hide"), % this.Player
+		this.Player.setVisible( Show )
 	}
-
+	
 	Image(File) {
-		GuiControl,, % this.Player, % "resources\images\" File
+		this.Player.setFile( "resources\images\" . File )
 	}
-
-    Move(X, Y, Relative := 0) {
-        Global ; Assume-global mode
-
-		GuiControlGet, Player, Pos, % this.Player
-        PX := (PlayerX // 32), PY := (PlayerY // 32)
-        X := (Relative ? PX + X : X), Y := (Relative ? PY + Y : Y)
-        GridType := GridMap[Y + 2, X + 2]
-        GuiControl,, Debug, %X%, %Y%`n%Background%`n%Map% ; Debug info
-
-        If (Y < PY) {
-            this.Image("player_up.png")
-        }
-
-        If (X < PX) {
-            this.Image("player_left.png")
-        }
-
-        If (Y > PY) {
-            this.Image("player_down.png")
-        }
-
-        If (X > PX) {
-            this.Image("player_right.png")
-        }
-
-        GuiControl, Move, % this.Player, % " x" X * 32 " y" Y * 32
-        GridAction("Move")
-    }
+	
+	Move(X, Y, Relative := 0) {
+		Global ; Assume-global mode
+		
+		pos := this.Player.getPosition()
+		PX := pos.1 - 1
+		PY := pos.2 - 1
+		X := (Relative ? PX + X : X), Y := (Relative ? PY + Y : Y)
+		GridType := GridMap[Y + 2, X + 2]
+		GuiControl,, Debug, %X%, %Y%`n%Background%`n%Map% ; Debug info
+		if Relative
+		{
+			If (Y < PY) {
+				this.Image("player_up.png")
+			}
+			If (X < PX) {
+				this.Image("player_left.png")
+			}
+			If (Y > PY) {
+				this.Image("player_down.png")
+			}
+			If (X > PX) {
+				this.Image("player_right.png")
+			}
+		}
+		this.Player.setPosition( [ X + 1, Y + 1, 2 ] )
+		GridAction("Move")
+	}
 }
 ; ==============================================================================
+
+Redraw:
+displayOut.draw()
+return
