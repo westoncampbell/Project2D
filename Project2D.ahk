@@ -58,9 +58,9 @@ WM_KEYDOWN(wParam, lParam, Msg, Hwnd) {
     VK_KEY_W := 57, VK_KEY_A := 41, VK_KEY_S := 53, VK_KEY_D := 44,
     VK_F1 := 70, VK_RETURN := "D",  VK_ESCAPE := "1B"
 
-    If (lParam & 0x40000000) {
-        return ; Disable auto-repeat
-    }
+    ;If (lParam & 0x40000000) {
+    ;    return ; Disable auto-repeat
+    ;}
 
     VK := Format("{:x}", wParam)
 
